@@ -1,0 +1,367 @@
+package com.example.android.spitit;
+
+import android.app.Activity;
+import android.app.AlertDialog;
+import android.app.PendingIntent;
+import android.content.DialogInterface;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.os.Bundle;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.support.v4.app.ActivityCompat;
+import android.support.v4.content.ContextCompat;
+import android.support.v7.widget.LinearLayoutManager;
+import android.support.v7.widget.RecyclerView;
+import android.support.v7.widget.Toolbar;
+import android.util.Log;
+import android.view.View;
+import android.widget.Button;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import com.firebase.ui.database.FirebaseRecyclerAdapter;
+import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.common.api.ResultCallback;
+import com.google.android.gms.common.api.Status;
+import com.google.android.gms.location.Geofence;
+import com.google.android.gms.location.GeofencingRequest;
+import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.maps.model.LatLng;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.database.DataSnapshot;
+import com.google.firebase.database.DatabaseError;
+import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.ValueEventListener;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+public class EmergencyActivity extends MainActivity {
+
+    private RecyclerView mEmergencyList;
+    private DatabaseReference mDatabase;
+    private FirebaseAuth mAuth;
+    private static final int REQUEST_CHECK_SETTINGS_GPS = 2;
+    private static final int REQUEST_ID_MULTIPLE_PERMISSIONS = 10;
+    private ArrayList<Geofence> mGeofenceList=new ArrayList<>();
+    private GoogleApiClient mGoogleApiClient;
+    Button endEmergency;
+    Button emergencyPortal;
+    private Button unsafe;
+    private ArrayList<String> admins=new ArrayList<>();
+
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_emergency);
+
+        mAuth=FirebaseAuth.getInstance();
+        endEmergency = (Button)findViewById(R.id.end_emergency);
+        emergencyPortal = (Button)findViewById(R.id.emergencyPortal);
+        unsafe=(Button)findViewById(R.id.unsafe);
+
+        checkPermissions();
+        admins=getAdmin();
+        Toolbar toolbar=(Toolbar)findViewById(R.id.emergency_activity_toolbar);
+        setSupportActionBar(toolbar);
+        getSupportActionBar().setTitle("Emergency");
+        getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+        mEmergencyList=(RecyclerView)findViewById(R.id.emergency_list);
+        mEmergencyList.setHasFixedSize(false);
+        mEmergencyList.setLayoutManager(new LinearLayoutManager(this));
+        mDatabase= FirebaseDatabase.getInstance().getReference().child("Emergency");
+        mDatabase.keepSynced(true);
+        mGoogleApiClient=new GoogleApiClient.Builder(this).addOnConnectionFailedListener(new GoogleApiClient.OnConnectionFailedListener() {
+            @Override
+            public void onConnectionFailed(@NonNull ConnectionResult connectionResult) {
+
+            }
+        }).addConnectionCallbacks(new GoogleApiClient.ConnectionCallbacks() {
+            @Override
+            public void onConnected(@Nullable Bundle bundle) {
+                addGeofencesButtonHandler();
+            }
+
+            @Override
+            public void onConnectionSuspended(int i) {
+                mGoogleApiClient.connect();
+            }
+        })
+                .addApi(LocationServices.API)
+                .build();
+        populateGeofenceList();
+        endEmergency.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                if(admins.contains(mAuth.getCurrentUser().getEmail()))
+                {
+                    new AlertDialog.Builder(EmergencyActivity.this)
+                            .setMessage("Are sure you want to end the emergency?")
+                            .setCancelable(false)
+                            .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
+                                @Override
+                                public void onClick(DialogInterface dialogInterface, int i) {
+                                    DatabaseReference mDatabase = FirebaseDatabase.getInstance().getReference().child("Emergency");
+                                    mDatabase.child(mAuth.getUid()).removeValue();
+                                    mDatabase = FirebaseDatabase.getInstance().getReference().child("messages");
+                                    mDatabase.removeValue();
+                                }
+                            })
+                            .setNegativeButton("No",null)
+                            .show();
+                }
+                else
+                    Toast.makeText(EmergencyActivity.this,"Only an admin can end an emergency!",Toast.LENGTH_LONG).show();
+
+            }
+        });
+
+        emergencyPortal.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                startActivity(new Intent(EmergencyActivity.this,EmergencyPortalFragment.class));
+            }
+        });
+        if(admins.contains(mAuth.getCurrentUser().getEmail()))
+        {
+            endEmergency.setVisibility(View.GONE);
+            emergencyPortal.setVisibility(View.GONE);
+            unsafe.setVisibility(View.GONE);
+        }
+    }
+
+    private ArrayList<String> getAdmin()
+    {
+        final ArrayList<String> admins=new ArrayList<>();
+        DatabaseReference mDatabase= FirebaseDatabase.getInstance().getReference().child("Admin");
+        mDatabase.addValueEventListener(new ValueEventListener() {
+            @Override
+            public void onDataChange(DataSnapshot dataSnapshot) {
+                Log.e("Adminfbfa",dataSnapshot.getValue().toString());
+                HashMap<String,String> admin=(HashMap<String,String>)dataSnapshot.getValue();
+                ArrayList<String> keySet=new ArrayList<>(admin.keySet());
+                for(String key:keySet)
+                {
+                    admins.add(admin.get(key));
+                    Log.e("Adminefbwe",admin.get(key));
+                }
+                Log.e("Arey admins",admins.toString());
+            }
+
+            @Override
+            public void onCancelled(DatabaseError databaseError) {
+
+            }
+        });
+        return admins;
+    }
+
+    @Override
+    public void onStart() {
+        super.onStart();
+        if (!mGoogleApiClient.isConnecting() || !mGoogleApiClient.isConnected()) {
+            mGoogleApiClient.connect();
+        }
+        final String[] Uid = new String[1];
+        FirebaseRecyclerAdapter<Emergency,EmergencyViewHolder> firebaseRecyclerAdapter=new FirebaseRecyclerAdapter<Emergency, EmergencyViewHolder>(Emergency.class,R.layout.emergency_row,EmergencyViewHolder.class,mDatabase) {
+
+
+            @Override
+            protected void populateViewHolder(EmergencyViewHolder viewHolder, Emergency model, int position) {
+                final String uid=getRef(position).getKey();
+                Uid[0] =uid;
+                viewHolder.setLocation(model.getLocation());
+                viewHolder.setType(model.getType());
+                viewHolder.setTip(model.getTip());
+                viewHolder.setPeople(model.getPeople());
+                viewHolder.mView.setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View view) {
+                        new AlertDialog.Builder(EmergencyActivity.this)
+                                .setMessage("Are you safe or unsafe ?")
+                                .setCancelable(false)
+                                .setPositiveButton("Unsafe", new DialogInterface.OnClickListener() {
+                                    @Override
+                                    public void onClick(DialogInterface dialogInterface, int i) {
+                                        DatabaseReference databaseReference=FirebaseDatabase.getInstance().getReference().child("Emergency").child(uid).child("People_list").child(mAuth.getCurrentUser().getUid());
+                                        databaseReference.setValue("Unsafe");
+                                        startActivity(new Intent(EmergencyActivity.this,EmergencyPortalFragment.class));
+                                        finish();
+                                    }
+                                })
+                                .setNegativeButton("Safe", new DialogInterface.OnClickListener() {
+                                    @Override
+                                    public void onClick(DialogInterface dialogInterface, int i) {
+                                        DatabaseReference databaseReference=FirebaseDatabase.getInstance().getReference().child("Emergency").child(uid).child("People_list").child(mAuth.getCurrentUser().getUid());
+                                        databaseReference.setValue("Safe");
+                                    }
+                                })
+                                .show();
+                    }
+                });
+            }
+        };
+        unsafe.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                Intent intent=new Intent(EmergencyActivity.this,UnsafeActivity.class);
+                intent.putExtra("UID",Uid[0]);
+                startActivity(intent);
+                finish();
+            }
+        });
+        mEmergencyList.setAdapter(firebaseRecyclerAdapter);
+    }
+
+    public static class EmergencyViewHolder extends RecyclerView.ViewHolder
+    {
+        View mView;
+        public EmergencyViewHolder(View itemView)
+        {
+            super(itemView);
+            mView=itemView;
+        }
+        public void setLocation(String location)
+        {
+            TextView locationTextView=(TextView)mView.findViewById(R.id.location_card_view);
+            locationTextView.setText(location);
+        }
+        public void setTip(String tip)
+        {
+            TextView tipTextView=(TextView)mView.findViewById(R.id.tip_card_view);
+            tipTextView.setText(tip);
+        }
+        public void setType(String emergency_type)
+        {
+            TextView emergencyTextView=(TextView)mView.findViewById(R.id.emergency_card_view);
+            emergencyTextView.setText(emergency_type);
+        }
+        public void setPeople(String people)
+        {
+            TextView peopleTextView=(TextView)mView.findViewById(R.id.people_left_card_view);
+            peopleTextView.setText(people);
+        }
+    }
+
+    private void populateGeofenceList()
+    {
+        for (Map.Entry<String,LatLng> entry: Constants.BAY_AREA_LANDMARKS.entrySet())
+        {
+            mGeofenceList.add(new Geofence.Builder()
+                    .setRequestId(entry.getKey())
+                    .setCircularRegion(
+                            entry.getValue().latitude,
+                            entry.getValue().longitude,
+                            Constants.GEOFENCE_RADIUS_IN_METERS)
+                    .setExpirationDuration(Constants.GEOFENCE_EXPIRATION_IN_MILLISECONDS)
+                    .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_ENTER|Geofence.GEOFENCE_TRANSITION_EXIT)
+                    .build());
+            Log.e("entry.getKey()",entry.getKey());
+        }
+    }
+
+    private GeofencingRequest getGeofencingRequest()
+    {
+        GeofencingRequest.Builder builder=new GeofencingRequest.Builder();
+        builder.setInitialTrigger(GeofencingRequest.INITIAL_TRIGGER_ENTER);
+        builder.addGeofences(mGeofenceList);
+        return builder.build();
+    }
+
+    private PendingIntent getGeofencePendingIntent()
+    {
+        Intent intent=new Intent(this, GeofenceTransitionsIntentService.class);
+        return PendingIntent.getService(this,0,intent,PendingIntent.FLAG_UPDATE_CURRENT);
+    }
+
+    public void addGeofencesButtonHandler()
+    {
+        if (!mGoogleApiClient.isConnected())
+            Toast.makeText(this,"Not connected",Toast.LENGTH_LONG).show();
+
+        try
+        {
+            int permissionLocation = ContextCompat.checkSelfPermission(EmergencyActivity.this,
+                    android.Manifest.permission.ACCESS_FINE_LOCATION);
+            if (permissionLocation == PackageManager.PERMISSION_GRANTED)
+            {
+                LocationServices.GeofencingApi.addGeofences(mGoogleApiClient,getGeofencingRequest(),getGeofencePendingIntent())
+                        .setResultCallback(new ResultCallback<Status>() {
+                            @Override
+                            public void onResult(@NonNull Status status) {
+                                if (status.isSuccess())
+                                    Toast.makeText(EmergencyActivity.this,"Geofence added",Toast.LENGTH_LONG).show();
+                                else
+                                {
+                                    String errorMessage= GeofenceErrorMessages.getErrorString(EmergencyActivity.this,status.getStatusCode());
+                                    Log.e("Error",errorMessage);
+                                }
+                            }
+                        });
+            }
+        }
+        catch (SecurityException se)
+        {
+            logSecurityException(se);
+        }
+    }
+
+    private void logSecurityException(SecurityException se)
+    {
+        Log.e("Permission denied",se.toString());
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        if (mGoogleApiClient.isConnecting() || mGoogleApiClient.isConnected()) {
+            mGoogleApiClient.disconnect();
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        switch (requestCode) {
+            case REQUEST_CHECK_SETTINGS_GPS:
+                switch (resultCode) {
+                    case Activity.RESULT_OK:
+                        //getMyLocation();
+                        break;
+                    case Activity.RESULT_CANCELED:
+                        finish();
+                        break;
+                }
+                break;
+        }
+    }
+
+    private void checkPermissions(){
+        int permissionLocation = ContextCompat.checkSelfPermission(EmergencyActivity.this,
+                android.Manifest.permission.ACCESS_FINE_LOCATION);
+        List<String> listPermissionsNeeded = new ArrayList<>();
+        if (permissionLocation != PackageManager.PERMISSION_GRANTED) {
+            listPermissionsNeeded.add(android.Manifest.permission.ACCESS_FINE_LOCATION);
+            if (!listPermissionsNeeded.isEmpty()) {
+                ActivityCompat.requestPermissions(this,
+                        listPermissionsNeeded.toArray(new String[listPermissionsNeeded.size()]), REQUEST_ID_MULTIPLE_PERMISSIONS);
+            }
+        }else{
+            //getMyLocation();
+        }
+
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String permissions[], @NonNull int[] grantResults) {
+        int permissionLocation = ContextCompat.checkSelfPermission(EmergencyActivity.this,
+                android.Manifest.permission.ACCESS_FINE_LOCATION);
+        if (permissionLocation == PackageManager.PERMISSION_GRANTED) {
+            //getMyLocation();
+        }
+    }
+}

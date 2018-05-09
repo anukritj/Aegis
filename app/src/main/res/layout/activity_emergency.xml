@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    tools:context="com.example.android.spitit.EmergencyActivity">
+
+    <ScrollView
+        android:id="@+id/layout"
+        android:layout_width="match_parent"
+        android:layout_weight="2"
+        android:layout_height="wrap_content">
+
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <include layout="@layout/main_toolbar"
+                android:id="@+id/emergency_activity_toolbar"/>
+
+            <android.support.v7.widget.RecyclerView
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:id="@+id/emergency_list"
+                android:layout_marginTop="?attr/actionBarSize" />
+
+        </RelativeLayout>
+    </ScrollView>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <Button
+            android:id="@+id/unsafe"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_margin="8dp"
+            android:background="#ff0000"
+            android:text="Unsafe people"
+            android:textColor="#ffffff"
+            android:textStyle="bold"/>
+
+        <Button
+            android:id="@+id/emergencyPortal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_margin="8dp"
+            android:text="Emergency Portal"
+            android:textColor="#ffffff"
+            android:textStyle="bold"
+            android:background="#2196F3"/>
+
+        <Button
+            android:id="@+id/end_emergency"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_alignStart="@+id/unsafe"
+            android:background="#8BC34A"
+            android:layout_margin="8dp"
+            android:text="end emergency"
+            android:textColor="#ffffff"
+            android:textStyle="bold" />
+    </LinearLayout>
+</LinearLayout>
+
